@@ -109,12 +109,17 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
             return;
         }
 
+        _swap(qiBal, QI, WFTM, WFTM_QI_POOL);
+    }
+
+    function _swap(uint256 _amount, address _from, address _to, bytes32 _pool) internal {
+
         IBeetVault.SingleSwap memory singleSwap;
-        singleSwap.poolId = WFTM_QI_POOL;
+        singleSwap.poolId = _pool;
         singleSwap.kind = IBeetVault.SwapKind.GIVEN_IN;
-        singleSwap.assetIn = IAsset(QI);
-        singleSwap.assetOut = IAsset(WFTM);
-        singleSwap.amount = qiBal;
+        singleSwap.assetIn = IAsset(_from);
+        singleSwap.assetOut = IAsset(_to);
+        singleSwap.amount = _amount;
         singleSwap.userData = abi.encode(0);
 
         IBeetVault.FundManagement memory funds;
@@ -123,7 +128,7 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
         funds.recipient = payable(address(this));
         funds.toInternalBalance = false;
 
-        IERC20Upgradeable(QI).safeIncreaseAllowance(BEET_VAULT, qiBal);
+        IERC20Upgradeable(_from).safeIncreaseAllowance(BEET_VAULT, _amount);
         IBeetVault(BEET_VAULT).swap(singleSwap, funds, 1, block.timestamp);
     }
 
