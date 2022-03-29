@@ -8,8 +8,6 @@ import "./interfaces/IBeetVault.sol";
 import "./interfaces/ICurvePool.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-import "hardhat/console.sol";
-
 /**
  * @dev Farms the QiDao protocol for Qi rewards
  */
@@ -19,7 +17,6 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
     // 3rd-party contract addresses
     address public constant BEET_VAULT = address(0x20dd72Ed959b6147912C2e529F0a0C651c33c9ce);
     address public constant MASTER_CHEF = address(0x9a73AF4B606813d32197fE598236BdECA47Bf5a3);
-    address public constant CURVE_REGISTRY = address(0x0f854EA9F38ceA4B1c2FC79047E9D0134419D5d6);
     address public constant CURVE_POOL = address(0xA58F16498c288c357e28EE899873fF2b55D7C437);
 
     /**
@@ -42,9 +39,11 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
      * @dev QiDao variables
      * {poolId} - ID of pool in which to deposit LP tokens in the {MASTER_CHEF}
      * {DEPOSIT_INDEX} - The index of the token in the want LP used to deposit and create the LP
+     * {qiToWftmRatio} - Saves tha ratio of qi to wftm after making a swap, used to later estimate the harvest
      */
     uint256 public constant POOL_ID = 0;
     uint256 public constant DEPOSIT_INDEX = 2;
+    uint256 public qiToWftmRatio;
 
     /**
      * @dev Initializes the strategy. Sets parameters and saves routes.
@@ -56,6 +55,7 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
         address[] memory _strategists
     ) public initializer {
         __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists);
+        qiToWftmRatio = 1 ether; // Default to 1:1 qi:wftm (reasonable accurate)
     }
 
     /**
@@ -89,7 +89,7 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
      *      3. Claims fees for the harvest caller and treasury.
      *      4. Swaps {WFTM} to {USDC} using {BEET_VAULT}.
      *      5. Creates the want LP token
-     *      6. Deposits the want to {MASTER_CHEF} to farm
+     *      6. Deposits the want in {MASTER_CHEF} to farm
      */
     function _harvestCore() internal override {
         _claimRewards();
@@ -112,16 +112,20 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
         if (qiBal == 0) {
             return;
         }
-
+        uint256 wftmBalBefore = IERC20Upgradeable(WFTM).balanceOf(address(this));
         _swap(qiBal, QI, WFTM, WFTM_QI_POOL);
+        uint256 wftmBalAfter = IERC20Upgradeable(WFTM).balanceOf(address(this));
+        uint256 wftmBalChange = wftmBalAfter - wftmBalBefore;
+        qiToWftmRatio =  1 ether * qiBal  / wftmBalChange;
     }
 
     /**
-     * @dev Core harvest function. Swaps {QI} to {WFTM} using {WFTM_QI_POOL}.
+     * @dev Core harvest function. Swaps {WFTM} to {USDC} using {WFTM_USDC_POOL}.
      */
     function _swapWftmToUSDC() internal {
         uint256 wftmBal = IERC20Upgradeable(WFTM).balanceOf(address(this));
-        if (wftmBal == 0) {
+        uint256 minSwapAmount = 1000000000000; // To prevent reverting on small amounts since USDC has 6 decimals only
+        if (wftmBal < minSwapAmount) {
             return;
         }
 
@@ -168,11 +172,16 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev Core harvest function. Adds more liquidity using {lpToken0} and {lpToken1}.
+     * @dev Core harvest function. Adds more liquidity using {USDC}
      */
     function _addLiquidity() internal {
-        uint256[] memory amounts = new uint256[](3);
-        ICurvePool(CURVE_POOL).add_liquidity(amounts, 0);
+        uint256 depositAmount = IERC20Upgradeable(USDC).balanceOf(address(this));
+        if (depositAmount > 100) {
+            uint256[3] memory amounts;
+            amounts[DEPOSIT_INDEX] = depositAmount;
+            IERC20Upgradeable(USDC).safeIncreaseAllowance(CURVE_POOL, depositAmount);
+            ICurvePool(CURVE_POOL).add_liquidity(amounts, 1);
+        }
     }
 
     /**
@@ -180,26 +189,23 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
      *      It takes into account both the funds in hand, plus the funds in the MasterChef.
      */
     function balanceOf() public view override returns (uint256) {
-        console.log("balanceOf()");
         (uint256 amount, ) = IFarmV2(MASTER_CHEF).userInfo(POOL_ID, address(this));
-        console.log("amount: ", amount);
         return amount + IERC20Upgradeable(want).balanceOf(address(this));
     }
 
     /**
      * @dev Returns the approx amount of profit from harvesting.
-     *      Profit is denominated in WFTM, and takes fees into account.
+     *      Profit is denominated in WFT, and takes fees into account.
      */
     function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
-        // uint256 pendingReward = IMasterChef(TSHARE_REWARDS_POOL).pendingShare(poolId, address(this));
-        // uint256 totalRewards = pendingReward + IERC20Upgradeable(TSHARE).balanceOf(address(this));
-        // if (totalRewards != 0) {
-        //     profit += IUniswapV2Router02(SPOOKY_ROUTER).getAmountsOut(totalRewards, tshareToWftmPath)[1];
-        // }
-        // profit += IERC20Upgradeable(WFTM).balanceOf(address(this));
-        // uint256 wftmFee = (profit * totalFee) / PERCENT_DIVISOR;
-        // callFeeToUser = (wftmFee * callFee) / PERCENT_DIVISOR;
-        // profit -= wftmFee;
+        uint256 pendingReward = IFarmV2(MASTER_CHEF).pending(POOL_ID, address(this));
+        uint256 totalRewards = pendingReward + IERC20Upgradeable(QI).balanceOf(address(this));
+        uint256 estimatedWftmReward =  totalRewards * 1 ether / qiToWftmRatio;
+        profit += estimatedWftmReward + IERC20Upgradeable(WFTM).balanceOf(address(this));
+
+        uint256 wftmFee = (profit * totalFee) / PERCENT_DIVISOR;
+        callFeeToUser = (wftmFee * callFee) / PERCENT_DIVISOR;
+        profit -= wftmFee;
     }
 
     /**
@@ -210,18 +216,11 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
      * Note: this is not an emergency withdraw function. For that, see panic().
      */
     function _retireStrat() internal override {
-        // IMasterChef(TSHARE_REWARDS_POOL).deposit(poolId, 0); // deposit 0 to claim rewards
-        // uint256 tshareBal = IERC20Upgradeable(TSHARE).balanceOf(address(this));
-        // _swap(tshareBal, tshareToWftmPath, SPOOKY_ROUTER);
-        // uint256 wftmBal = IERC20Upgradeable(WFTM).balanceOf(address(this));
-        // _swap(wftmBal, wftmToTombPath, SPOOKY_ROUTER);
-        // uint256 tombHalf = IERC20Upgradeable(lpToken0).balanceOf(address(this)) / 2;
-        // _swap(tombHalf, tombToMaiPath, TOMB_ROUTER);
-        // _addLiquidity();
-        // (uint256 poolBal, ) = IMasterChef(TSHARE_REWARDS_POOL).userInfo(poolId, address(this));
-        // IMasterChef(TSHARE_REWARDS_POOL).withdraw(poolId, poolBal);
-        // uint256 wantBalance = IERC20Upgradeable(want).balanceOf(address(this));
-        // IERC20Upgradeable(want).safeTransfer(vault, wantBalance);
+        _harvestCore();
+        (uint256 amount, ) = IFarmV2(MASTER_CHEF).userInfo(POOL_ID, address(this));
+        IFarmV2(MASTER_CHEF).withdraw(POOL_ID, amount);
+        uint256 wantBalance = IERC20Upgradeable(want).balanceOf(address(this));
+        IERC20Upgradeable(want).safeTransfer(vault, wantBalance);
     }
 
     /**

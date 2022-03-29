@@ -100,7 +100,7 @@ describe('Vaults', function () {
   });
 
   describe('Deploying the vault and strategy', function () {
-    it('should initiate vault with a 0 balance', async function () {
+    xit('should initiate vault with a 0 balance', async function () {
       const totalBalance = await vault.balance();
       const availableBalance = await vault.available();
       const pricePerFullShare = await vault.getPricePerFullShare();
@@ -111,7 +111,7 @@ describe('Vaults', function () {
   });
 
   describe('Vault Tests', function () {
-    it('should allow deposits and account for them correctly', async function () {
+    xit('should allow deposits and account for them correctly', async function () {
       const userBalance = await want.balanceOf(wantHolderAddr);
       const vaultBalance = await vault.balance();
       const depositAmount = toWantUnit('10');
@@ -123,7 +123,7 @@ describe('Vaults', function () {
       expect(depositAmount).to.be.closeTo(newVaultBalance, allowedInaccuracy);
     });
 
-    it('should mint user their pool share', async function () {
+    xit('should mint user their pool share', async function () {
       const userBalance = await want.balanceOf(wantHolderAddr);
       const depositAmount = toWantUnit('10');
       await vault.connect(wantHolder).deposit(depositAmount);
@@ -133,16 +133,23 @@ describe('Vaults', function () {
       await want.connect(owner).approve(vault.address, ethers.constants.MaxUint256);
       await vault.connect(owner).deposit(ownerDepositAmount);
 
-      const allowedImprecision = toWantUnit('0.0001');
+      const depositFee = 50;
+      const percentDivisor = 10000;
+      const depositFeeTotal = depositAmount.mul(depositFee).div(percentDivisor);
 
       const userVaultBalance = await vault.balanceOf(wantHolderAddr);
-      expect(userVaultBalance).to.be.closeTo(depositAmount, allowedImprecision);
+      expect(userVaultBalance).to.equal(depositAmount.sub(depositFeeTotal));
+
+      const ownerDepositFeeTotal = ownerDepositAmount.mul(depositFee).div(percentDivisor);
       const ownerVaultBalance = await vault.balanceOf(owner.address);
-      expect(ownerVaultBalance).to.be.closeTo(ownerDepositAmount, allowedImprecision);
+      expect(ownerVaultBalance).to.equal(ownerDepositAmount.sub(ownerDepositFeeTotal));
+
+      const securitFee = 10;
+      const securityFeeTotal = ownerVaultBalance.mul(securitFee).div(percentDivisor);
 
       await vault.connect(owner).withdrawAll();
       const ownerWantBalance = await want.balanceOf(owner.address);
-      expect(ownerWantBalance).to.be.closeTo(ownerDepositAmount, allowedImprecision);
+      expect(ownerWantBalance).to.equal(ownerVaultBalance.sub(securityFeeTotal));
       const afterOwnerVaultBalance = await vault.balanceOf(owner.address);
       expect(afterOwnerVaultBalance).to.equal(0);
     });
@@ -153,56 +160,19 @@ describe('Vaults', function () {
       await vault.connect(wantHolder).deposit(depositAmount);
 
       await vault.connect(wantHolder).withdrawAll();
-      const newUserVaultBalance = await vault.balanceOf(wantHolderAddr);
       const userBalanceAfterWithdraw = await want.balanceOf(wantHolderAddr);
 
-      const securityFee = 10;
       const percentDivisor = 10000;
-      const withdrawFee = depositAmount.mul(securityFee).div(percentDivisor);
-      const expectedBalance = userBalance.sub(withdrawFee);
-      const smallDifference = expectedBalance.div(200);
-      const isSmallBalanceDifference = expectedBalance.sub(userBalanceAfterWithdraw) < smallDifference;
-      expect(isSmallBalanceDifference).to.equal(true);
-    });
-
-    xit('should allow small withdrawal', async function () {
-      const userBalance = await want.balanceOf(wantHolderAddr);
-      const depositAmount = toWantUnit('0.0000001');
-      await vault.connect(wantHolder).deposit(depositAmount);
-
-      const ownerDepositAmount = toWantUnit('0.1');
-      await want.connect(wantHolder).transfer(owner.address, ownerDepositAmount);
-      await want.connect(owner).approve(vault.address, ethers.constants.MaxUint256);
-      await vault.connect(owner).deposit(ownerDepositAmount);
-
-      await vault.connect(wantHolder).withdrawAll();
-      const newUserVaultBalance = await vault.balanceOf(wantHolderAddr);
-      const userBalanceAfterWithdraw = await want.balanceOf(wantHolderAddr);
+      const depositFee = 50;
+      const depositFeeTotal = depositAmount.mul(depositFee).div(percentDivisor);
+      console.log(`depositFeeTotal: ${depositFeeTotal}`);
+      const expectedVaultBalance = depositAmount.sub(depositFeeTotal);
 
       const securityFee = 10;
-      const percentDivisor = 10000;
-      const withdrawFee = depositAmount.mul(securityFee).div(percentDivisor);
-      const expectedBalance = userBalance.sub(withdrawFee);
-      const smallDifference = expectedBalance.div(200);
-      const isSmallBalanceDifference = expectedBalance.sub(userBalanceAfterWithdraw) < smallDifference;
-      expect(isSmallBalanceDifference).to.equal(true);
-    });
-
-    xit('should handle small deposit + withdraw', async function () {
-      const userBalance = await want.balanceOf(wantHolderAddr);
-      const depositAmount = toWantUnit('0.0000000000001');
-      await vault.connect(wantHolder).deposit(depositAmount);
-
-      await vault.connect(wantHolder).withdraw(depositAmount);
-      const newUserVaultBalance = await vault.balanceOf(wantHolderAddr);
-      const userBalanceAfterWithdraw = await want.balanceOf(wantHolderAddr);
-
-      const securityFee = 10;
-      const percentDivisor = 10000;
-      const withdrawFee = (depositAmount * securityFee) / percentDivisor;
-      const expectedBalance = userBalance.sub(withdrawFee);
-      const isSmallBalanceDifference = expectedBalance.sub(userBalanceAfterWithdraw) < 200;
-      expect(isSmallBalanceDifference).to.equal(true);
+      const securityFeeTotal = expectedVaultBalance.mul(securityFee).div(percentDivisor);
+      console.log(`withdrawFee: ${securityFeeTotal}`);
+      const expectedBalance = userBalance.sub(securityFeeTotal).sub(depositFeeTotal);
+      expect(userBalanceAfterWithdraw).to.equal(expectedBalance);
     });
 
     xit('should be able to harvest', async function () {
@@ -211,18 +181,17 @@ describe('Vaults', function () {
     });
 
     xit('should provide yield', async function () {
-      const timeToSkip = 3600;
-      const initialUserBalance = await want.balanceOf(wantHolderAddr);
-      const depositAmount = initialUserBalance.div(10);
+      const timeToSkip = 100;
+      const depositAmount = await want.balanceOf(wantHolderAddr);
 
       await vault.connect(wantHolder).deposit(depositAmount);
       const initialVaultBalance = await vault.balance();
 
-      await strategy.updateHarvestLogCadence(timeToSkip / 2);
+      await strategy.updateHarvestLogCadence(1);
 
       const numHarvests = 5;
       for (let i = 0; i < numHarvests; i++) {
-        await moveTimeForward(timeToSkip);
+        await moveBlocksForward(timeToSkip);
         await strategy.harvest();
       }
 
@@ -270,7 +239,7 @@ describe('Vaults', function () {
       expect(newStrategyBalance).to.be.lt(allowedImprecision);
     });
 
-    xit('should be able to retire strategy with no balance', async function () {
+    it('should be able to retire strategy with no balance', async function () {
       await expect(strategy.retireStrat()).to.not.be.reverted;
     });
 
