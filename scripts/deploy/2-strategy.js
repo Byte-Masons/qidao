@@ -1,7 +1,7 @@
 const hre = require('hardhat');
 
 async function main() {
-  const vaultAddress = '0xf3327b00Bb53Bb72365E9B168526693ECeA0a1E4';
+  const vaultAddress = '';
 
   const Strategy = await ethers.getContractFactory('ReaperStrategyQiDao');
   const treasuryAddress = '0x0e7c5313E9BB80b654734d9b7aB1FB01468deE3b';

@@ -36,9 +36,9 @@ describe('Vaults', function () {
 
   const treasuryAddr = '0x0e7c5313E9BB80b654734d9b7aB1FB01468deE3b';
   const paymentSplitterAddress = '0x63cbd4134c2253041F370472c130e92daE4Ff174';
-  const wantAddress = '0xA58F16498c288c357e28EE899873fF2b55D7C437';
+  const wantAddress = '0x985976228a4685Ac4eCb0cfdbEeD72154659B6d9';
 
-  const wantHolderAddr = '0xf2500793a561eb15b7d301f82eebe56752b2186b';
+  const wantHolderAddr = '0x693bb875bfa667073acf9c62782909da88aafc39';
   const strategistAddr = '0x1A20D7A31e5B3Bc5f02c8A146EF6f394502a10c4';
 
   let owner;
@@ -81,8 +81,8 @@ describe('Vaults', function () {
     //deploy contracts
     vault = await Vault.deploy(
       wantAddress,
-      'MAI3Pool-f QiDao Crypt',
-      'rf-MAI3Pool-f',
+      'MAI Concerto QiDao Crypt',
+      'rf-BPT-MAIUSDC',
       depositFee,
       ethers.constants.MaxUint256,
     );
@@ -181,7 +181,7 @@ describe('Vaults', function () {
     });
 
     xit('should provide yield', async function () {
-      const timeToSkip = 100;
+      const blocksToSkip = 100;
       const depositAmount = await want.balanceOf(wantHolderAddr);
 
       await vault.connect(wantHolder).deposit(depositAmount);
@@ -191,7 +191,7 @@ describe('Vaults', function () {
 
       const numHarvests = 5;
       for (let i = 0; i < numHarvests; i++) {
-        await moveBlocksForward(timeToSkip);
+        await moveBlocksForward(blocksToSkip);
         await strategy.harvest();
       }
 
@@ -239,11 +239,11 @@ describe('Vaults', function () {
       expect(newStrategyBalance).to.be.lt(allowedImprecision);
     });
 
-    it('should be able to retire strategy with no balance', async function () {
+    xit('should be able to retire strategy with no balance', async function () {
       await expect(strategy.retireStrat()).to.not.be.reverted;
     });
 
-    xit('should be able to estimate harvest', async function () {
+    it('should be able to estimate harvest', async function () {
       const whaleDepositAmount = toWantUnit('1000');
       await vault.connect(wantHolder).deposit(whaleDepositAmount);
       await moveBlocksForward(100);

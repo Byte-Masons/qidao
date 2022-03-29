@@ -3,14 +3,14 @@
   "proxies": [
     {
       "address": "0xdbC43Ba45381e02825b14322cDdd15eC4B3164E6",
-      "txHash": "0x8090fe9b720f5762a549190715c53c0077005e5707f68bec159c193f871d35df",
+      "txHash": "0xb1d3900fb3570e5f4fed7e694a52375943b07a31296e19c36057c20309034650",
       "kind": "uups"
     }
   ],
   "impls": {
-    "7071aefe5cd3dd3ecf93c00360558f84670568ced1f71e3fff92f49716f74010": {
+    "67eb482f30037c4ff9b4edcc8589c6e6f554ffe9f8e37e9ac31b5018ad5657fe": {
       "address": "0x1fA02b2d6A771842690194Cf62D91bdd92BfE28d",
-      "txHash": "0xcdaeadd270094e8d21e104b6f46122cae56f8cacf214c9b6487d42a9bea2c2ce",
+      "txHash": "0x7c906e028d3006a5c601e19e6bb9063f38aae262833ec1354a607d25527cfc4c",
       "layout": {
         "storage": [
           {
@@ -113,7 +113,7 @@
             "label": "harvestLog",
             "offset": 0,
             "slot": "351",
-            "type": "t_array(t_struct(Harvest)6605_storage)dyn_storage",
+            "type": "t_array(t_struct(Harvest)6774_storage)dyn_storage",
             "contract": "ReaperBaseStrategyv2",
             "src": "contracts\\abstract\\ReaperBaseStrategyv2.sol:27"
           },
@@ -206,12 +206,36 @@
             "src": "contracts\\abstract\\ReaperBaseStrategyv2.sol:77"
           },
           {
-            "label": "qiToWftmRatio",
+            "label": "underlyings",
             "offset": 0,
             "slot": "363",
+            "type": "t_array(t_contract(IAsset)7577)dyn_storage",
+            "contract": "ReaperStrategyQiDao",
+            "src": "contracts\\ReaperStrategyQiDao.sol:36"
+          },
+          {
+            "label": "qiToWftmRatio",
+            "offset": 0,
+            "slot": "364",
             "type": "t_uint256",
             "contract": "ReaperStrategyQiDao",
             "src": "contracts\\ReaperStrategyQiDao.sol:48"
+          },
+          {
+            "label": "beetsPoolId",
+            "offset": 0,
+            "slot": "365",
+            "type": "t_bytes32",
+            "contract": "ReaperStrategyQiDao",
+            "src": "contracts\\ReaperStrategyQiDao.sol:49"
+          },
+          {
+            "label": "usdcPosition",
+            "offset": 0,
+            "slot": "366",
+            "type": "t_uint256",
+            "contract": "ReaperStrategyQiDao",
+            "src": "contracts\\ReaperStrategyQiDao.sol:50"
           }
         ],
         "types": {
@@ -223,7 +247,11 @@
             "label": "bytes32[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(Harvest)6605_storage)dyn_storage": {
+          "t_array(t_contract(IAsset)7577)dyn_storage": {
+            "label": "contract IAsset[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(Harvest)6774_storage)dyn_storage": {
             "label": "struct ReaperBaseStrategyv2.Harvest[]",
             "numberOfBytes": "32"
           },
@@ -242,6 +270,10 @@
           "t_bytes32": {
             "label": "bytes32",
             "numberOfBytes": "32"
+          },
+          "t_contract(IAsset)7577": {
+            "label": "contract IAsset",
+            "numberOfBytes": "20"
           },
           "t_mapping(t_address,t_bool)": {
             "label": "mapping(address => bool)",
@@ -271,7 +303,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Harvest)6605_storage": {
+          "t_struct(Harvest)6774_storage": {
             "label": "struct ReaperBaseStrategyv2.Harvest",
             "members": [
               {

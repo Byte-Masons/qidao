@@ -5,7 +5,8 @@ pragma solidity ^0.8.0;
 import "./abstract/ReaperBaseStrategyv2.sol";
 import "./interfaces/IFarmV2.sol";
 import "./interfaces/IBeetVault.sol";
-import "./interfaces/ICurvePool.sol";
+import "./interfaces/IBaseWeightedPool.sol";
+import "./interfaces/IBasePool.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 /**
@@ -16,8 +17,7 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
 
     // 3rd-party contract addresses
     address public constant BEET_VAULT = address(0x20dd72Ed959b6147912C2e529F0a0C651c33c9ce);
-    address public constant MASTER_CHEF = address(0x9a73AF4B606813d32197fE598236BdECA47Bf5a3);
-    address public constant CURVE_POOL = address(0xA58F16498c288c357e28EE899873fF2b55D7C437);
+    address public constant MASTER_CHEF = address(0x230917f8a262bF9f2C3959eC495b11D1B7E1aFfC);
 
     /**
      * @dev Tokens Used:
@@ -25,11 +25,13 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
      * {USDC} - Used for making the want LP token
      * {QI} - Reward token for compounding into want
      * {want} - The deposited token the strategy is maximizing
+     * {underlyings} - Array of IAsset type to represent the underlying tokens of the pool.
      */
     address public constant WFTM = address(0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83);
     address public constant USDC = address(0x04068DA6C83AFCFA0e13ba15A6696662335D5B75);
     address public constant QI = address(0x68Aa691a8819B07988B18923F712F3f4C8d36346);
-    address public constant want = address(0xA58F16498c288c357e28EE899873fF2b55D7C437);
+    address public constant want = address(0x985976228a4685Ac4eCb0cfdbEeD72154659B6d9);
+    IAsset[] underlyings;
 
     // pools used to swap tokens
     bytes32 public constant WFTM_QI_POOL = 0x7ae6a223cde3a17e0b95626ef71a2db5f03f540a00020000000000000000008a;
@@ -38,12 +40,14 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
     /**
      * @dev QiDao variables
      * {poolId} - ID of pool in which to deposit LP tokens in the {MASTER_CHEF}
-     * {DEPOSIT_INDEX} - The index of the token in the want LP used to deposit and create the LP
      * {qiToWftmRatio} - Saves tha ratio of qi to wftm after making a swap, used to later estimate the harvest
+     * {beetsPoolId} - bytes32 ID of the Beethoven-X pool corresponding to {want}
+     * {usdcPosition} - Index of {USDC} in the Beethoven-X pool
      */
     uint256 public constant POOL_ID = 0;
-    uint256 public constant DEPOSIT_INDEX = 2;
     uint256 public qiToWftmRatio;
+    bytes32 public beetsPoolId;
+    uint256 public usdcPosition;
 
     /**
      * @dev Initializes the strategy. Sets parameters and saves routes.
@@ -55,7 +59,17 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
         address[] memory _strategists
     ) public initializer {
         __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists);
-        qiToWftmRatio = 1 ether; // Default to 1:1 qi:wftm (reasonable accurate)
+        qiToWftmRatio = 1 ether; // Default to 1:1 qi:wftm (reasonably accurate)
+        beetsPoolId = IBasePool(want).getPoolId();
+
+        (IERC20Upgradeable[] memory tokens, , ) = IBeetVault(BEET_VAULT).getPoolTokens(beetsPoolId);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (address(tokens[i]) == USDC) {
+                usdcPosition = i;
+            }
+
+            underlyings.push(IAsset(address(tokens[i])));
+        }
     }
 
     /**
@@ -96,10 +110,13 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
         _swapQiToWftm();
         _chargeFees();
         _swapWftmToUSDC();
-        _addLiquidity();
+         _joinPool();
         deposit();
     }
 
+    /**
+     * @dev Core harvest function. Claims the QI reward from the {MASTER_CHEF}.
+     */
     function _claimRewards() internal {
         IFarmV2(MASTER_CHEF).deposit(POOL_ID, 0); // deposit 0 to claim rewards
     }
@@ -172,16 +189,28 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev Core harvest function. Adds more liquidity using {USDC}
+     * @dev Core harvest function. Joins {beetsPoolId} using {USDC} balance;
      */
-    function _addLiquidity() internal {
-        uint256 depositAmount = IERC20Upgradeable(USDC).balanceOf(address(this));
-        if (depositAmount > 100) {
-            uint256[3] memory amounts;
-            amounts[DEPOSIT_INDEX] = depositAmount;
-            IERC20Upgradeable(USDC).safeIncreaseAllowance(CURVE_POOL, depositAmount);
-            ICurvePool(CURVE_POOL).add_liquidity(amounts, 1);
+    function _joinPool() internal {
+        uint256 usdcBal = IERC20Upgradeable(USDC).balanceOf(address(this));
+        if (usdcBal == 0) {
+            return;
         }
+
+        IBaseWeightedPool.JoinKind joinKind = IBaseWeightedPool.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT;
+        uint256[] memory amountsIn = new uint256[](underlyings.length);
+        amountsIn[usdcPosition] = usdcBal;
+        uint256 minAmountOut = 1;
+        bytes memory userData = abi.encode(joinKind, amountsIn, minAmountOut);
+
+        IBeetVault.JoinPoolRequest memory request;
+        request.assets = underlyings;
+        request.maxAmountsIn = amountsIn;
+        request.userData = userData;
+        request.fromInternalBalance = false;
+
+        IERC20Upgradeable(USDC).safeIncreaseAllowance(BEET_VAULT, usdcBal);
+        IBeetVault(BEET_VAULT).joinPool(beetsPoolId, address(this), address(this), request);
     }
 
     /**
@@ -216,9 +245,11 @@ contract ReaperStrategyQiDao is ReaperBaseStrategyv2 {
      * Note: this is not an emergency withdraw function. For that, see panic().
      */
     function _retireStrat() internal override {
-        _harvestCore();
         (uint256 amount, ) = IFarmV2(MASTER_CHEF).userInfo(POOL_ID, address(this));
         IFarmV2(MASTER_CHEF).withdraw(POOL_ID, amount);
+        _swapQiToWftm();
+        _swapWftmToUSDC();
+         _joinPool();
         uint256 wantBalance = IERC20Upgradeable(want).balanceOf(address(this));
         IERC20Upgradeable(want).safeTransfer(vault, wantBalance);
     }

@@ -1,9 +1,9 @@
 async function main() {
   const Vault = await ethers.getContractFactory('ReaperVaultv1_4');
 
-  const wantAddress = '0xA58F16498c288c357e28EE899873fF2b55D7C437';
-  const tokenName = 'MAI3Pool-f QiDao Crypt';
-  const tokenSymbol = 'rf-MAI3Pool-f';
+  const wantAddress = '0x985976228a4685Ac4eCb0cfdbEeD72154659B6d9';
+  const tokenName = 'MAI Concerto QiDao Crypt';
+  const tokenSymbol = 'rf-BPT-MAIUSDC';
   const depositFee = 50;
   const tvlCap = ethers.constants.MaxUint256;
   const options = {gasPrice: 300000000000, gasLimit: 9000000};
