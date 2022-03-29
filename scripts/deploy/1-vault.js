@@ -6,7 +6,7 @@ async function main() {
   const tokenSymbol = 'rf-BPT-MAIUSDC';
   const depositFee = 50;
   const tvlCap = ethers.constants.MaxUint256;
-  const options = {gasPrice: 300000000000, gasLimit: 9000000};
+  const options = {gasPrice: 200000000000, gasLimit: 9000000};
 
   const vault = await Vault.deploy(wantAddress, tokenName, tokenSymbol, depositFee, tvlCap, options);
 
